@@ -12,6 +12,7 @@ document.querySelector('#app').innerHTML = `
 <div class="stats">
   <div>등록 사진: <strong id="photoCount">0</strong>장</div>
   <div>방문 지역: <strong id="regionCount">0</strong>곳</div>
+  <div>전국 방문률: <strong id="visitRate">0%</strong></div>
 </div>
 
 <h2>방문 지역</h2>
@@ -78,6 +79,7 @@ function updateStats() {
   const photoCount = document.getElementById('photoCount')
   const regionCount = document.getElementById('regionCount')
   const regionList = document.getElementById('regionList')
+  const visitRate = document.getElementById('visitRate')
 
   photoCount.textContent = savedPhotos.length
 
@@ -88,6 +90,11 @@ function updateStats() {
   )]
 
   regionCount.textContent = regions.length
+
+  const rate =
+    ((regions.length / 229) * 100).toFixed(1)
+
+  visitRate.textContent = `${rate}%`
 
   regionList.innerHTML = ''
 
