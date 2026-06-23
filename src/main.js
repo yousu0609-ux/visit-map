@@ -145,8 +145,14 @@ photoInput.addEventListener('change', async (event) => {
       console.log(file.name)
       console.log(gps)
 
-const address = await getAddress(gps.latitude, gps.longitude)
-console.log(address)
+let address = { displayName: '' }
+
+try {
+  address = await getAddress(gps.latitude, gps.longitude)
+  console.log(address)
+} catch (error) {
+  console.log('주소 변환 실패', error)
+}
 
 const imageUrl = URL.createObjectURL(file)
 
@@ -192,9 +198,10 @@ if (!alreadySaved) {
 
     } catch (error) {
 
-alert(`${file.name} 사진에는 위치 정보가 없어요. 아이폰 사진 선택 화면에서 '옵션'을 눌러 위치 정보를 포함해 주세요.`)
+alert(`${file.name} 사진의 GPS 정보를 읽지 못했어요. 위치 정보가 포함된 원본 사진인지 확인해 주세요.`)
 
 console.log('GPS 없음', file.name)
+console.log(error)
     }
 
   }
