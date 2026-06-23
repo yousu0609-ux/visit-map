@@ -192,8 +192,9 @@ if (!alreadySaved) {
 
     } catch (error) {
 
-      console.log('GPS 없음', file.name)
+alert(`${file.name} 사진에는 위치 정보가 없어요. 아이폰 사진 선택 화면에서 '옵션'을 눌러 위치 정보를 포함해 주세요.`)
 
+console.log('GPS 없음', file.name)
     }
 
   }
