@@ -25,3 +25,9 @@ body {
   background: #f2f2f2;
   border-radius: 10px;
 }
+
+.photo-marker {
+  font-size: 28px;
+  line-height: 30px;
+  text-align: center;
+}

@@ -26,6 +26,14 @@ document.querySelector('#app').innerHTML = `
 
 const map = L.map('map').setView([36.5, 127.8], 7)
 
+const photoIcon = L.divIcon({
+  className: 'photo-marker',
+  html: '📍',
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
+  popupAnchor: [0, -30]
+})
+
 const photoList = document.getElementById('photoList')
 
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -111,7 +119,7 @@ savedPhotos.forEach((photo, index) => {
   L.marker([
     photo.latitude,
     photo.longitude
-  ])
+  ], { icon: photoIcon })
   .addTo(map)
   .bindPopup(photo.name)
 
@@ -159,7 +167,7 @@ const imageUrl = URL.createObjectURL(file)
 L.marker([
   gps.latitude,
   gps.longitude
-])
+], { icon: photoIcon })
 .addTo(map)
 .bindPopup(`
   <div>
