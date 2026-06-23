@@ -75,6 +75,22 @@ async function getAddress(latitude, longitude) {
   }
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      resolve(reader.result)
+    }
+
+    reader.onerror = () => {
+      reject(reader.error)
+    }
+
+    reader.readAsDataURL(file)
+  })
+}
+
 function updateStats() {
   const photoCount = document.getElementById('photoCount')
   const regionCount = document.getElementById('regionCount')
@@ -133,8 +149,14 @@ savedPhotos.forEach((photo, index) => {
   const listItem = document.createElement('li')
 
 listItem.innerHTML = `
-  ${photo.name} / ${photo.address || `${photo.latitude}, ${photo.longitude}`}
-  <button data-index="${index}">삭제</button>
+  <div class="photo-card">
+    ${photo.thumbnailUrl ? `<img src="${photo.thumbnailUrl}" alt="${photo.name}">` : ''}
+    <div>
+      <strong>${photo.name}</strong><br>
+      ${photo.address || `${photo.latitude}, ${photo.longitude}`}<br>
+      <button data-index="${index}">삭제</button>
+    </div>
+  </div>
 `
 
 listItem.querySelector('button').addEventListener('click', () => {
@@ -170,6 +192,7 @@ try {
 }
 
 const imageUrl = URL.createObjectURL(file)
+const thumbnailUrl = await fileToDataUrl(file)
 
 L.marker([
   gps.latitude,
@@ -186,8 +209,17 @@ L.marker([
 map.setView([gps.latitude, gps.longitude], 13)
 
 const listItem = document.createElement('li')
-listItem.textContent =
-  `${file.name} / ${address.displayName || `${gps.latitude}, ${gps.longitude}`}`
+
+listItem.innerHTML = `
+  <div class="photo-card">
+    <img src="${thumbnailUrl}" alt="${file.name}">
+    <div>
+      <strong>${file.name}</strong><br>
+      ${address.displayName || `${gps.latitude}, ${gps.longitude}`}
+    </div>
+  </div>
+`
+
 photoList.appendChild(listItem)
 
 const alreadySaved = savedPhotos.some(photo =>
@@ -201,7 +233,8 @@ if (!alreadySaved) {
   name: file.name,
   latitude: gps.latitude,
   longitude: gps.longitude,
-  address: address.displayName
+  address: address.displayName,
+  thumbnailUrl
 })
 
   localStorage.setItem(
