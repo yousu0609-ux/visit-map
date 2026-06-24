@@ -20,8 +20,15 @@ document.querySelector('#app').innerHTML = `
 
 <h2>✈️ 여행 목록</h2>
 <div id="tripList"></div>
+<div id="tripViewer"></div>
 
 <div id="albumViewer"></div>
+
+<div id="bookViewer"></div>
+
+<div id="lightbox" class="lightbox">
+  <img id="lightboxImage">
+</div>
 
 <h2>방문 지역</h2>
 <ul id="regionList"></ul>
@@ -345,21 +352,321 @@ function updateTrips() {
       const first =
         photos[0]
 
+const coverPhoto = photos[0]
+
+const tripTitle =
+  generateTripTitle(photos)
+
       tripCard.innerHTML = `
-        <h3>✈️ ${key}</h3>
-        <p>장소 ${new Set(
+  <div class="trip-cover">
+
+    ${
+      coverPhoto?.thumbnailUrl
+        ? `
+          <img
+            src="${coverPhoto.thumbnailUrl}"
+            alt="${key}"
+          >
+        `
+        : ''
+    }
+
+  </div>
+
+  <div class="trip-info">
+
+    <h3>${tripTitle}</h3>
+
+    <p>
+      장소 ${
+        new Set(
           photos.map(
             p => p.landmarkName || p.address
           )
-        ).size}곳</p>
+        ).size
+      }곳
+    </p>
 
-        <p>사진 ${photos.length}장</p>
-      `
+    <p>
+      사진 ${photos.length}장
+    </p>
+
+  </div>
+`
+
+tripCard.style.cursor = 'pointer'
+
+tripCard.addEventListener('click', () => {
+  openTrip(photos, key)
+})
+
+const bookButton =
+  document.createElement('button')
+
+bookButton.textContent =
+  '📕 앨범 만들기'
+
+bookButton.addEventListener('click', event => {
+
+  event.stopPropagation()
+
+  openBook(
+    tripTitle,
+    photos
+  )
+
+})
+
+tripCard.appendChild(bookButton)
 
       tripList.appendChild(tripCard)
 
     }
   )
+}
+
+function generateTripTitle(photos) {
+
+  const address =
+    photos[0]?.address || ''
+
+  if (address.includes('여수')) {
+    return '🌉 여수 여행'
+  }
+
+  if (address.includes('경주')) {
+    return '🏛 경주 역사 여행'
+  }
+
+  if (address.includes('제주')) {
+    return '🌊 제주 여행'
+  }
+
+  return `✈️ ${photos[0]?.takenAt || ''} 여행`
+}
+
+async function downloadBookPdf(title, photos) {
+  const bookElement = document.querySelector('.book')
+
+  const canvas = await html2canvas(bookElement, {
+    scale: 2
+  })
+
+  const imageData = canvas.toDataURL('image/png')
+
+  const { jsPDF } = window.jspdf
+
+  const pdf = new jsPDF('p', 'mm', 'a4')
+
+  const pageWidth = 210
+  const imageWidth = pageWidth - 20
+  const imageHeight =
+    canvas.height * imageWidth / canvas.width
+
+  pdf.addImage(
+    imageData,
+    'PNG',
+    10,
+    10,
+    imageWidth,
+    imageHeight
+  )
+
+  pdf.save(`${title}.pdf`)
+}
+
+function openBook(title, photos) {
+
+  const bookViewer =
+    document.getElementById('bookViewer')
+
+  const places = {}
+
+  photos.forEach(photo => {
+
+    const placeName =
+      photo.landmarkName ||
+      photo.address ||
+      '알 수 없는 장소'
+
+    if (!places[placeName]) {
+      places[placeName] = []
+    }
+
+    places[placeName].push(photo)
+
+  })
+
+  bookViewer.innerHTML = `
+    <div class="book">
+
+<div class="book-cover">
+
+  <img
+    src="${photos[0]?.thumbnailUrl}"
+    class="book-cover-image"
+  >
+
+  <h1>${title}</h1>
+
+  <p>
+    📅 ${photos[0]?.takenAt || ''}
+  </p>
+
+  <p>
+    📍 장소 ${
+      Object.keys(places).length
+    }곳
+  </p>
+
+  <p>
+    📸 사진 ${photos.length}장
+  </p>
+
+</div>
+
+<hr>
+
+
+<button id="downloadPdfButton">
+  📥 PDF 저장
+</button>
+
+
+      <hr>
+
+      ${Object.entries(places).map(
+        ([placeName, placePhotos]) => `
+
+          <h2>📍 ${placeName}</h2>
+
+          <div class="album-photos">
+
+            ${placePhotos.map(photo => `
+              <img
+                src="${photo.thumbnailUrl}"
+                class="trip-photo"
+              >
+            `).join('')}
+
+          </div>
+
+          <hr>
+
+        `
+      ).join('')}
+
+    </div>
+  `
+document
+  .getElementById('downloadPdfButton')
+  .addEventListener('click', () => {
+    downloadBookPdf(title, photos)
+  })
+
+}
+
+function openTrip(photos, title) {
+  const tripViewer =
+    document.getElementById('tripViewer')
+
+  const places = {}
+
+  photos.forEach(photo => {
+    const placeName =
+      photo.landmarkName || photo.address || '알 수 없는 장소'
+
+    if (!places[placeName]) {
+      places[placeName] = []
+    }
+
+    places[placeName].push(photo)
+  })
+
+  tripViewer.innerHTML = `
+  <div class="trip-summary">
+
+    <h2>${title}</h2>
+
+    <p>
+      📍 장소 ${Object.keys(places).length}곳
+    </p>
+
+    <p>
+      📸 사진 ${photos.length}장
+    </p>
+
+    <p>
+      📅 ${photos[0]?.takenAt || ''}
+    </p>
+
+  </div>
+
+  ${Object.entries(places).map(([placeName, placePhotos], index) => `
+    <div
+      class="album-card trip-place-card"
+      data-place-index="${index}"
+    >
+
+      <h3>📍 ${placeName}</h3>
+
+      <p>
+        사진 ${placePhotos.length}장
+      </p>
+
+    </div>
+  `).join('')}
+`
+const placeEntries = Object.entries(places)
+
+document.querySelectorAll('.trip-place-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const index = card.dataset.placeIndex
+    const [placeName, placePhotos] = placeEntries[index]
+
+    tripViewer.innerHTML = `
+      <h2>📍 ${placeName}</h2>
+
+      <div class="album-photos">
+        ${placePhotos.map(photo => `
+          <img
+  src="${photo.thumbnailUrl}"
+  class="trip-photo"
+  data-photo="${photo.thumbnailUrl}"
+>
+        `).join('')}
+      </div>
+    `
+document
+  .querySelectorAll('.trip-photo')
+  .forEach(image => {
+
+    image.addEventListener('click', () => {
+
+      openPhoto(
+        image.dataset.photo
+      )
+
+    })
+
+  })
+    
+  })
+})
+
+}
+
+function openPhoto(photoUrl) {
+
+  const lightbox =
+    document.getElementById('lightbox')
+
+  const image =
+    document.getElementById('lightboxImage')
+
+  image.src = photoUrl
+
+  lightbox.style.display = 'flex'
 }
 
 function openAlbum(album) {
@@ -436,6 +743,16 @@ photoList.appendChild(listItem)
 updateStats()
 updateAlbums()
 updateTrips()
+
+document
+  .getElementById('lightbox')
+  .addEventListener('click', () => {
+
+    document
+      .getElementById('lightbox')
+      .style.display = 'none'
+
+  })
 
 photoInput.addEventListener('change', async (event) => {
 
