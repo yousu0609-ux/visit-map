@@ -1,4 +1,8 @@
 import './style.css'
+
+import { supabase }
+  from './supabase'
+
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import exifr from 'exifr'
@@ -6,6 +10,15 @@ import exifr from 'exifr'
 document.querySelector('#app').innerHTML = `
   <div class="container">
     <h1>전국 방문지 기록</h1>
+
+<div class="auth-box">
+  <input id="emailInput" type="email" placeholder="이메일">
+  <input id="passwordInput" type="password" placeholder="비밀번호">
+  <button id="signupButton">회원가입</button>
+  <button id="loginButton">로그인</button>
+  <button id="logoutButton">로그아웃</button>
+  <p id="authStatus">로그인 안 됨</p>
+</div>
 
     <input type="file" id="photoInput" multiple accept="image/*">
 
@@ -99,7 +112,7 @@ function createThumbnailDataUrl(file) {
 
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const maxSize = 300
+        const maxSize = 1200
 
         let width = img.width
         let height = img.height
@@ -118,7 +131,7 @@ function createThumbnailDataUrl(file) {
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, width, height)
 
-        resolve(canvas.toDataURL('image/jpeg', 0.7))
+        resolve(canvas.toDataURL('image/jpeg', 0.9))
       }
 
       img.onerror = reject
@@ -126,6 +139,22 @@ function createThumbnailDataUrl(file) {
     }
 
     reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      resolve(reader.result)
+    }
+
+    reader.onerror = () => {
+      reject(reader.error)
+    }
+
     reader.readAsDataURL(file)
   })
 }
@@ -156,10 +185,14 @@ async function getLandmark(latitude, longitude) {
   const query = `
     [out:json];
     (
-      node(around:1000,${latitude},${longitude})["tourism"];
-      node(around:1000,${latitude},${longitude})["historic"];
-      node(around:1000,${latitude},${longitude})["leisure"];
-    );
+  node(around:1200,${latitude},${longitude})["tourism"="attraction"];
+  node(around:1200,${latitude},${longitude})["tourism"="viewpoint"];
+  node(around:1200,${latitude},${longitude})["tourism"="museum"];
+  node(around:1200,${latitude},${longitude})["tourism"="gallery"];
+  node(around:1200,${latitude},${longitude})["historic"];
+  node(around:1200,${latitude},${longitude})["leisure"="park"];
+  node(around:1200,${latitude},${longitude})["natural"="beach"];
+);
     out center 10;
   `
 
@@ -174,7 +207,71 @@ async function getLandmark(latitude, longitude) {
   const data = await response.json()
 
   const places = data.elements
-    .filter(place => place.tags && place.tags.name)
+  .filter(place => place.tags && place.tags.name)
+
+  .filter(place => {
+
+    const name = place.tags.name
+
+    const excludeKeywords = [
+
+      '치과',
+    '병원',
+    '약국',
+    '편의점',
+    'CU',
+    'GS25',
+    '세븐일레븐',
+    '이마트24',
+    '주차장',
+    '아파트',
+    '오피스텔',
+    '주유소',
+    '은행',
+    '주민센터',
+    '파출소',
+    '우체국',
+    '클리닉',
+'골프',
+'연습장',
+'스크린골프',
+'마트',
+'슈퍼',
+'상가',
+'학원',
+'교회',
+'성당',
+'절',
+'노래방',
+'PC방',
+'미용실',
+'헤어',
+'네일',
+'헬스장',
+'피트니스',
+'게스트하우스',
+'호텔',
+'모텔',
+'펜션',
+'숙소',
+'리조트',
+'민박',
+'경찰',
+'충혼탑',
+'갤러리',
+'게스트하우스',
+'호텔',
+'모텔',
+'펜션',
+'숙소'
+
+    ]
+
+    return !excludeKeywords.some(
+      keyword => name.includes(keyword)
+    )
+
+  })
     .map(place => {
       const distance = getDistanceMeters(
         latitude,
@@ -183,10 +280,17 @@ async function getLandmark(latitude, longitude) {
         place.lon
       )
 
-      return {
-        name: place.tags.name,
-        distance
-      }
+      const tourismType =
+  place.tags.tourism ||
+  place.tags.historic ||
+  place.tags.leisure ||
+  ''
+
+return {
+  name: place.tags.name,
+  distance,
+  tourismType
+}
     })
     .sort((a, b) => a.distance - b.distance)
 
@@ -294,7 +398,12 @@ albumCard.innerHTML = `
   </div>
 
   <div class="album-info">
-    <h3>📍 ${album.title}</h3>
+    <h3>
+  📍 ${album.title}
+  <button class="edit-album-button" data-title="${album.title}">
+    ✏️
+  </button>
+</h3>
     <p>${getAlbumDateText(album.photos)}</p>
     <p>사진 ${album.photos.length}장</p>
   </div>
@@ -302,8 +411,37 @@ albumCard.innerHTML = `
 
 albumCard.style.cursor = 'pointer'
 
-albumCard.addEventListener('click', () => {
+albumCard.addEventListener('click', (event) => {
+  if (event.target.classList.contains('edit-album-button')) {
+    return
+  }
+
   openAlbum(album)
+})
+
+const editButton =
+  albumCard.querySelector('.edit-album-button')
+
+editButton.addEventListener('click', (event) => {
+  event.stopPropagation()
+
+  const newTitle =
+    prompt('새 앨범 이름', album.title)
+
+  if (!newTitle) {
+    return
+  }
+
+  album.photos.forEach(photo => {
+    photo.landmarkName = newTitle
+  })
+
+  localStorage.setItem(
+    'visitedPhotos',
+    JSON.stringify(savedPhotos)
+  )
+
+  location.reload()
 })
 
     albumList.appendChild(albumCard)
@@ -329,8 +467,11 @@ function updateTrips() {
         .slice(0, 2)
         .join(' ')
 
-    const key =
-      `${photo.takenAt}-${city}`
+    const tripDate =
+  photo.displayDate || ''
+
+const key =
+  `${tripDate}-${city}`
 
     if (!trips[key]) {
       trips[key] = []
@@ -425,55 +566,163 @@ tripCard.appendChild(bookButton)
   )
 }
 
+function generateLandmarkName(name) {
+
+  if (!name) {
+    return null
+  }
+
+  const excludeKeywords = [
+
+    '치과',
+    '병원',
+    '약국',
+    '편의점',
+    'CU',
+    'GS25',
+    '세븐일레븐',
+    '이마트24',
+    '주차장',
+    '아파트',
+    '오피스텔',
+    '주유소',
+    '은행',
+    '주민센터',
+    '파출소',
+    '우체국',
+    '클리닉',
+'골프',
+'연습장',
+'스크린골프',
+'마트',
+'슈퍼',
+'상가',
+'학원',
+'교회',
+'성당',
+'절',
+'노래방',
+'PC방',
+'미용실',
+'헤어',
+'네일',
+'헬스장',
+'피트니스',
+'게스트하우스',
+'호텔',
+'모텔',
+'펜션',
+'숙소',
+'리조트',
+'민박',
+'경찰',
+'충혼탑',
+'갤러리',
+'게스트하우스',
+'호텔',
+'모텔',
+'펜션',
+'숙소'
+
+  ]
+
+  const isExcluded =
+    excludeKeywords.some(
+      keyword => name.includes(keyword)
+    )
+
+  if (isExcluded) {
+    return null
+  }
+
+  return name
+}
+
 function generateTripTitle(photos) {
+  const names = photos
+    .map(photo => photo.landmarkName)
+    .filter(Boolean)
 
-  const address =
-    photos[0]?.address || ''
+  const text = names.join(' ')
 
-  if (address.includes('여수')) {
+  if (text.includes('밤바다') || text.includes('여수')) {
     return '🌉 여수 여행'
   }
 
-  if (address.includes('경주')) {
-    return '🏛 경주 역사 여행'
+  if (text.includes('전주') || text.includes('한옥')) {
+    return '🍲 전주 여행'
   }
 
-  if (address.includes('제주')) {
-    return '🌊 제주 여행'
+  if (text.includes('경주') || text.includes('첨성대') || text.includes('불국사')) {
+    return '🏛️ 경주 역사 여행'
   }
 
-  return `✈️ ${photos[0]?.takenAt || ''} 여행`
+  return `✈️ ${photos[0]?.displayDate || ''} 여행`
 }
 
 async function downloadBookPdf(title, photos) {
-  const bookElement = document.querySelector('.book')
-
-  const canvas = await html2canvas(bookElement, {
-    scale: 2
-  })
-
-  const imageData = canvas.toDataURL('image/png')
-
   const { jsPDF } = window.jspdf
-
   const pdf = new jsPDF('p', 'mm', 'a4')
 
   const pageWidth = 210
-  const imageWidth = pageWidth - 20
-  const imageHeight =
-    canvas.height * imageWidth / canvas.width
+  const pageHeight = 297
 
-  pdf.addImage(
-    imageData,
-    'PNG',
-    10,
-    10,
-    imageWidth,
-    imageHeight
+  async function addElementAsPage(element, isFirstPage = false) {
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true
+    })
+
+    const imageData = canvas.toDataURL('image/png')
+
+    const imageWidth = pageWidth
+    const imageHeight =
+      canvas.height * imageWidth / canvas.width
+
+    if (!isFirstPage) {
+      pdf.addPage()
+    }
+
+    pdf.addImage(
+      imageData,
+      'PNG',
+      0,
+      0,
+      imageWidth,
+      imageHeight
+    )
+  }
+
+const memoButtons =
+  document.querySelectorAll('.memo-button')
+
+memoButtons.forEach(button => {
+  button.style.display = 'none'
+})
+
+const bookPages =
+  document.querySelectorAll(
+    '.book-cover, .book-overview, .book-place'
   )
 
-  pdf.save(`${title}.pdf`)
+let isFirstPage = true
+
+for (const page of bookPages) {
+  await addElementAsPage(page, isFirstPage)
+  isFirstPage = false
 }
+
+memoButtons.forEach(button => {
+  button.style.display = ''
+})
+
+pdf.save(`${title}.pdf`)
+
+memoButtons.forEach(button => {
+  button.style.display = ''
+})
+
+} // downloadBookPdf 끝
 
 function openBook(title, photos) {
 
@@ -482,35 +731,128 @@ function openBook(title, photos) {
 
   const places = {}
 
-  photos.forEach(photo => {
+photos.forEach(photo => {
+  const matchedPlace =
+    Object.keys(places).find(name => {
+      const firstPhoto = places[name][0]
 
+      return (
+        getDistanceMeters(
+          firstPhoto.latitude,
+          firstPhoto.longitude,
+          photo.latitude,
+          photo.longitude
+        ) < 300
+      )
+    })
+
+  if (matchedPlace) {
+    places[matchedPlace].push(photo)
+  } else {
     const placeName =
-      photo.landmarkName ||
+      generateLandmarkName(photo.landmarkName) ||
       photo.address ||
       '알 수 없는 장소'
 
-    if (!places[placeName]) {
-      places[placeName] = []
-    }
+    places[placeName] = [photo]
+  }
+})
 
-    places[placeName].push(photo)
+  const timelinePhotos =
+    [...photos]
+      .filter(photo => photo.takenAt)
+      .sort(
+        (a, b) =>
+          new Date(a.takenAt) -
+          new Date(b.takenAt)
+      )
 
-  })
+      const uniqueTimelinePhotos = []
+
+timelinePhotos.forEach(photo => {
+
+  const placeName =
+    photo.landmarkName ||
+    photo.address
+
+  const lastPhoto =
+    uniqueTimelinePhotos[
+      uniqueTimelinePhotos.length - 1
+    ]
+
+  const lastPlaceName =
+    lastPhoto
+      ? (
+          lastPhoto.landmarkName ||
+          lastPhoto.address
+        )
+      : null
+
+  if (placeName !== lastPlaceName) {
+    uniqueTimelinePhotos.push(photo)
+  }
+
+})
+
+const startTime =
+  new Date(timelinePhotos[0]?.takenAt)
+
+const endTime =
+  new Date(
+    timelinePhotos[
+      timelinePhotos.length - 1
+    ]?.takenAt
+  )
+
+const diffMinutes =
+  Math.floor(
+    (endTime - startTime) /
+    1000 /
+    60
+  )
+
+const travelHours =
+  Math.floor(diffMinutes / 60)
+
+const travelMinutes =
+  diffMinutes % 60
+
+  let totalDistance = 0
+
+for (let i = 1; i < timelinePhotos.length; i++) {
+
+  totalDistance += getDistanceMeters(
+    timelinePhotos[i - 1].latitude,
+    timelinePhotos[i - 1].longitude,
+    timelinePhotos[i].latitude,
+    timelinePhotos[i].longitude
+  )
+
+}
+
+const totalDistanceKm =
+  (totalDistance / 1000).toFixed(1)
 
   bookViewer.innerHTML = `
     <div class="book">
 
+<div class="book-actions">
+  <button id="downloadPdfButton">
+    📥 PDF 저장
+  </button>
+</div>
+
 <div class="book-cover">
 
   <img
-    src="${photos[0]?.thumbnailUrl}"
+    src="${photos[0]?.fullImageUrl || photos[0]?.thumbnailUrl}"
     class="book-cover-image"
   >
 
   <h1>${title}</h1>
 
   <p>
-    📅 ${photos[0]?.takenAt || ''}
+    📅 ${photos[0]?.displayDate || ''}
   </p>
 
   <p>
@@ -523,48 +865,246 @@ function openBook(title, photos) {
     📸 사진 ${photos.length}장
   </p>
 
+<p>
+  🕒 여행시간
+  ${travelHours}시간
+  ${travelMinutes}분
+</p>
+
+<p>
+  🚗 이동거리
+  ${totalDistanceKm}km
+</p>
+
+</div>
+
+<div class="book-overview">
+
+  <div class="book-timeline">
+
+  <h2>📅 여행 타임라인</h2>
+
+  ${uniqueTimelinePhotos.map((photo, index) => {
+    let badge = '📍 경유'
+
+    if (index === 0) {
+      badge = '🟢 출발'
+    } else if (index === uniqueTimelinePhotos.length - 1) {
+      badge = '🔴 도착'
+    }
+
+    return `
+      <div class="timeline-item">
+
+        <div class="timeline-badge">
+          ${badge}
+        </div>
+
+        <div class="timeline-time">
+          ${new Date(photo.takenAt)
+            .toLocaleTimeString('ko-KR', {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+        </div>
+
+        <div class="timeline-place">
+          ${
+            photo.landmarkName ||
+            photo.address
+          }
+        </div>
+
+      </div>
+    `
+  }).join('')}
+
+  </div>
+
+  <div class="book-route">
+
+    <h2>🗺️ 여행 경로</h2>
+
+    <div id="routeMap"></div>
+
+  </div>
+
 </div>
 
 <hr>
 
-
-<button id="downloadPdfButton">
-  📥 PDF 저장
-</button>
-
-
-      <hr>
-
       ${Object.entries(places).map(
         ([placeName, placePhotos]) => `
 
-          <h2>📍 ${placeName}</h2>
+          <div class="book-place">
 
-          <div class="album-photos">
+  <h2>📍 ${placeName}</h2>
 
-            ${placePhotos.map(photo => `
-              <img
-                src="${photo.thumbnailUrl}"
-                class="trip-photo"
-              >
-            `).join('')}
+<button class="memo-button" data-place="${placeName}">
+  📝 여행 메모
+</button>
 
-          </div>
+<p class="place-memo">
+  ${localStorage.getItem(`memo-${placeName}`) || ''}
+</p>
 
-          <hr>
+<img
+  src="${placePhotos[0]?.fullImageUrl || placePhotos[0]?.thumbnailUrl}"
+  class="book-place-cover"
+>
+
+
+  <div class="book-photo-grid">
+
+    ${placePhotos.slice(1).map(photo => `
+      <img
+        src="${photo.fullImageUrl || photo.thumbnailUrl}"
+        class="book-photo"
+      >
+    `).join('')}
+
+  </div>
+
+</div>
 
         `
       ).join('')}
 
     </div>
   `
+
 document
-  .getElementById('downloadPdfButton')
-  .addEventListener('click', () => {
-    downloadBookPdf(title, photos)
+  .querySelectorAll('.memo-button')
+  .forEach(button => {
+    button.addEventListener('click', () => {
+      const placeName = button.dataset.place
+
+      const memo = prompt(
+        '이 장소의 메모를 입력하세요',
+        localStorage.getItem(`memo-${placeName}`) || ''
+      )
+
+      if (memo === null) {
+        return
+      }
+
+      localStorage.setItem(
+        `memo-${placeName}`,
+        memo
+      )
+
+      openBook(title, photos)
+    })
   })
 
+const routeMap = L.map('routeMap')
+
+routeMap.setView(
+  [
+    photos[0].latitude,
+    photos[0].longitude
+  ],
+  10
+)
+
+L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(routeMap)
+
+const sortedPhotos =
+  [...photos]
+    .filter(photo => photo.takenAt)
+    .sort(
+      (a, b) =>
+        new Date(a.takenAt) -
+        new Date(b.takenAt)
+    )
+
+const routePoints = sortedPhotos
+  .filter(
+    photo =>
+      photo.latitude &&
+      photo.longitude
+  )
+  .map(photo => [
+    photo.latitude,
+    photo.longitude
+  ])
+
+  const routePlaces = sortedPhotos
+  .filter(
+    photo =>
+      photo.latitude &&
+      photo.longitude
+  )
+  .map(photo =>
+    photo.landmarkName ||
+    photo.address ||
+    '알 수 없는 장소'
+  )
+
+const routeLayer = L.layerGroup().addTo(routeMap)
+
+L.polyline(
+  routePoints,
+  {
+    weight: 5
+  }
+).addTo(routeLayer)
+
+routePoints.forEach((point, index) => {
+  let label = '📍 경유'
+
+  if (index === 0) {
+    label = '🟢 출발'
+  } else if (index === routePoints.length - 1) {
+    label = '🔴 도착'
+  }
+
+  L.marker(point)
+    .addTo(routeLayer)
+    .bindPopup(`
+      <strong>${label}</strong><br>
+      ${routePlaces[index]}
+    `)
+})
+
+if (routePoints.length > 1) {
+  routeMap.fitBounds(routePoints)
 }
+
+setTimeout(() => {
+  routeMap.invalidateSize()
+
+  if (routePoints.length > 1) {
+    routeMap.fitBounds(routePoints, {
+      padding: [30, 30]
+    })
+  }
+}, 500)
+
+document
+  .getElementById('downloadPdfButton')
+  .addEventListener('click', async () => {
+    routeMap.invalidateSize()
+
+    if (routePoints.length > 1) {
+      routeMap.fitBounds(routePoints, {
+        padding: [30, 30]
+      })
+    }
+
+    setTimeout(() => {
+
+      routeMap.removeLayer(routeLayer)
+
+      downloadBookPdf(title, photos).then(() => {
+  routeLayer.addTo(routeMap)
+})
+    }, 800)
+  })
+
+}   
 
 function openTrip(photos, title) {
   const tripViewer =
@@ -572,16 +1112,59 @@ function openTrip(photos, title) {
 
   const places = {}
 
-  photos.forEach(photo => {
+photos.forEach(photo => {
+
+  const matchedPlace =
+    Object.keys(places).find(name => {
+
+      const firstPhoto =
+        places[name][0]
+
+      return (
+        getDistanceMeters(
+          firstPhoto.latitude,
+          firstPhoto.longitude,
+          photo.latitude,
+          photo.longitude
+        ) < 300
+      )
+
+    })
+
+  if (matchedPlace) {
+
+    places[matchedPlace].push(photo)
+
+  } else {
+
     const placeName =
-      photo.landmarkName || photo.address || '알 수 없는 장소'
 
-    if (!places[placeName]) {
-      places[placeName] = []
-    }
+      generateLandmarkName(
+        photo.landmarkName
+      )
 
-    places[placeName].push(photo)
-  })
+      ||
+
+      photo.address
+
+      ||
+
+      '알 수 없는 장소'
+
+    places[placeName] = [photo]
+
+  }
+
+})
+
+  const timelinePhotos =
+  [...photos]
+    .filter(photo => photo.takenAt)
+    .sort(
+      (a, b) =>
+        new Date(a.takenAt) -
+        new Date(b.takenAt)
+    )
 
   tripViewer.innerHTML = `
   <div class="trip-summary">
@@ -597,7 +1180,38 @@ function openTrip(photos, title) {
     </p>
 
     <p>
-      📅 ${photos[0]?.takenAt || ''}
+  🕒 여행 시간
+  ${travelHours}시간
+  ${travelMinutes}분
+</p>
+
+<p>
+  🟢 출발
+
+  ${
+    timelinePhotos[0]
+      ?.landmarkName ||
+    timelinePhotos[0]
+      ?.address
+  }
+</p>
+
+<p>
+  🔴 도착
+
+  ${
+    timelinePhotos[
+      timelinePhotos.length - 1
+    ]?.landmarkName ||
+
+    timelinePhotos[
+      timelinePhotos.length - 1
+    ]?.address
+  }
+</p>
+
+    <p>
+      📅 ${photos[0]?.displayDate || ''}
     </p>
 
   </div>
@@ -630,9 +1244,9 @@ document.querySelectorAll('.trip-place-card').forEach(card => {
       <div class="album-photos">
         ${placePhotos.map(photo => `
           <img
-  src="${photo.thumbnailUrl}"
+  src="${photo.fullImageUrl || photo.thumbnailUrl}"
   class="trip-photo"
-  data-photo="${photo.thumbnailUrl}"
+  data-photo="${photo.fullImageUrl || photo.thumbnailUrl}"
 >
         `).join('')}
       </div>
@@ -681,7 +1295,7 @@ function openAlbum(album) {
 
     <div class="album-photos">
       ${album.photos.map(photo => `
-        <img src="${photo.thumbnailUrl}">
+        <img src="${photo.fullImageUrl || photo.thumbnailUrl}">
       `).join('')}
     </div>
   `
@@ -700,6 +1314,70 @@ function deletePhoto(index) {
 
 const photoInput = document.getElementById('photoInput')
 
+const emailInput = document.getElementById('emailInput')
+const passwordInput = document.getElementById('passwordInput')
+const signupButton = document.getElementById('signupButton')
+const loginButton = document.getElementById('loginButton')
+const logoutButton = document.getElementById('logoutButton')
+const authStatus = document.getElementById('authStatus')
+
+async function updateAuthStatus() {
+  const { data } = await supabase.auth.getUser()
+
+  if (data.user) {
+    authStatus.textContent = `로그인됨: ${data.user.email}`
+  } else {
+    authStatus.textContent = '로그인 안 됨'
+  }
+}
+
+signupButton.addEventListener('click', async () => {
+
+if (!emailInput.value || !passwordInput.value) {
+  alert('이메일과 비밀번호를 입력해 주세요.')
+  return
+}
+
+  const { error } = await supabase.auth.signUp({
+    email: emailInput.value,
+    password: passwordInput.value
+  })
+
+  if (error) {
+    alert(error.message)
+  } else {
+    alert('회원가입 완료. 이메일 확인이 필요할 수 있어요.')
+    updateAuthStatus()
+  }
+})
+
+loginButton.addEventListener('click', async () => {
+
+if (!emailInput.value || !passwordInput.value) {
+  alert('이메일과 비밀번호를 입력해 주세요.')
+  return
+}
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: emailInput.value,
+    password: passwordInput.value
+  })
+
+  if (error) {
+    alert(error.message)
+  } else {
+    alert('로그인 성공')
+    updateAuthStatus()
+  }
+})
+
+logoutButton.addEventListener('click', async () => {
+  await supabase.auth.signOut()
+  updateAuthStatus()
+})
+
+updateAuthStatus()
+
 const savedPhotos =
   JSON.parse(localStorage.getItem('visitedPhotos')) || []
 
@@ -712,7 +1390,7 @@ savedPhotos.forEach((photo, index) => {
   .addTo(map)
   .bindPopup(`
   <div>
-    ${photo.thumbnailUrl ? `<img src="${photo.thumbnailUrl}" style="width:160px; border-radius:8px; margin-bottom:8px;">` : ''}
+    ${photo.fullImageUrl || photo.thumbnailUrl ? `<img src="${photo.fullImageUrl || photo.thumbnailUrl}" style="width:160px; border-radius:8px; margin-bottom:8px;">` : ''}
     <strong>${photo.name}</strong><br>
     ${photo.address || `${photo.latitude}, ${photo.longitude}`}
   </div>
@@ -722,7 +1400,7 @@ savedPhotos.forEach((photo, index) => {
 
 listItem.innerHTML = `
   <div class="photo-card">
-    ${photo.thumbnailUrl ? `<img src="${photo.thumbnailUrl}" alt="${photo.name}">` : ''}
+    ${photo.fullImageUrl || photo.thumbnailUrl ? `<img src="${photo.fullImageUrl || photo.thumbnailUrl}" alt="${photo.name}">` : ''}
     <div>
       <strong>${photo.name}</strong><br>
 ${photo.takenAt ? `${photo.takenAt}<br>` : ''}
@@ -765,8 +1443,12 @@ photoInput.addEventListener('change', async (event) => {
       const gps = await exifr.gps(file)
       const exifData = await exifr.parse(file)
 const takenAt =
+  exifData?.DateTimeOriginal || ''
+
+const displayDate =
   exifData?.DateTimeOriginal
-    ? new Date(exifData.DateTimeOriginal).toLocaleDateString('ko-KR')
+    ? new Date(exifData.DateTimeOriginal)
+        .toLocaleDateString('ko-KR')
     : ''
 
       console.log(file.name)
@@ -792,6 +1474,7 @@ try {
 
 const imageUrl = URL.createObjectURL(file)
 const thumbnailUrl = await createThumbnailDataUrl(file)
+
 
 L.marker([
   gps.latitude,
@@ -837,7 +1520,8 @@ savedPhotos.push({
   address: address.displayName,
   landmarkName,
   thumbnailUrl,
-  takenAt
+  takenAt,
+  displayDate
 })
 
   localStorage.setItem(
@@ -859,3 +1543,8 @@ console.log(error)
   }
 
 })
+
+console.log(
+  'supabase',
+  supabase
+)
