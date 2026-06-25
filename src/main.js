@@ -3,6 +3,8 @@ import './style.css'
 import { supabase }
   from './supabase'
 
+import heic2any from 'heic2any'
+
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import exifr from 'exifr'
@@ -20,7 +22,24 @@ document.querySelector('#app').innerHTML = `
   <p id="authStatus">로그인 안 됨</p>
 </div>
 
-    <input type="file" id="photoInput" multiple accept="image/*">
+<button id="startTripButton">
+  🚶 여행 기록 시작
+</button>
+
+<button id="stopTripButton">
+  ⛔ 여행 기록 종료
+</button>
+
+    <input
+  type="file"
+  id="photoInput"
+  multiple
+  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+>
+
+<p class="upload-guide">
+  아이폰 사진이 안 올라가면 공유/저장 과정에서 JPEG로 변환해 다시 올려주세요.
+</p>
 
 <div class="stats">
   <div>등록 사진: <strong id="photoCount">0</strong>장</div>
@@ -54,6 +73,13 @@ document.querySelector('#app').innerHTML = `
 `
 
 const map = L.map('map').setView([36.5, 127.8], 7)
+
+let travelLogs =
+  JSON.parse(
+    localStorage.getItem('travelLogs')
+  ) || []
+
+let watchId = null
 
 const photoIcon = L.divIcon({
   className: 'photo-marker',
@@ -346,6 +372,8 @@ function getAlbumDateText(photos) {
 }
 
 function updateAlbums() {
+  console.log('앨범 생성 기준 savedPhotos', savedPhotos)
+
   const albumList = document.getElementById('albumList')
 
   albumList.innerHTML = ''
@@ -1294,27 +1322,170 @@ function openAlbum(album) {
     <h2>${album.title}</h2>
 
     <div class="album-photos">
-      ${album.photos.map(photo => `
-        <img src="${photo.fullImageUrl || photo.thumbnailUrl}">
-      `).join('')}
+      ${album.photos.map(photo => {
+  const photoIndex =
+    savedPhotos.findIndex(savedPhoto =>
+      savedPhoto.supabaseId === photo.supabaseId
+    )
+
+  return `
+          <div class="album-photo-item">
+            <img src="${photo.fullImageUrl || photo.thumbnailUrl}">
+
+            <button
+              class="delete-photo-button"
+              data-index="${photoIndex}"
+            >
+              🗑️ 삭제
+            </button>
+          </div>
+        `
+      }).join('')}
     </div>
   `
+
+  document
+    .querySelectorAll('.delete-photo-button')
+    .forEach(button => {
+      button.addEventListener('click', async (event) => {
+        event.stopPropagation()
+
+        const index =
+  Number(button.dataset.index)
+
+if (index < 0) {
+  alert('삭제할 사진을 찾지 못했어요.')
+  return
 }
 
-function deletePhoto(index) {
+await deletePhoto(index)
+      })
+    })
+}
+
+async function deletePhoto(index) {
+  const photo = savedPhotos[index]
+
+  if (!photo) {
+    console.log('삭제할 사진이 없습니다', index)
+    return
+  }
+
+  console.log('삭제할 사진', photo)
+  console.log('삭제할 supabaseId', photo.supabaseId)
+
+  if (!confirm('이 사진을 삭제할까요?')) {
+    return
+  }
+
+  if (photo.supabaseId) {
+    const { data, error } =
+  await supabase
+    .from('trip_photos')
+    .delete()
+    .eq('id', photo.supabaseId)
+    .select()
+
+if (error) {
+  console.log('Supabase 삭제 실패', error)
+  alert('클라우드 사진 삭제에 실패했어요.')
+  return
+}
+
+console.log('실제 삭제된 row', data)
+
+if (!data || data.length === 0) {
+  alert('삭제 권한 문제로 실제 삭제되지 않았어요.')
+  return
+}
+
+    if (error) {
+      console.log('Supabase 삭제 실패', error)
+      alert('클라우드 사진 삭제에 실패했어요.')
+      return
+    }
+
+console.log('Supabase 삭제 성공', photo.supabaseId)
+
+  }
+
   savedPhotos.splice(index, 1)
+  console.log('삭제 후 savedPhotos', savedPhotos)
 
   localStorage.setItem(
-    'visitedPhotos',
-    JSON.stringify(savedPhotos)
-  )
+  'visitedPhotos',
+  JSON.stringify(savedPhotos)
+)
 
-  location.reload()
+updateStats()
+updateAlbums()
+updateTrips()
 }
 
-const photoInput = document.getElementById('photoInput')
+const photoInput =
+  document.getElementById('photoInput')
 
-const emailInput = document.getElementById('emailInput')
+document
+  .getElementById('startTripButton')
+  .addEventListener('click', () => {
+
+    if (!navigator.geolocation) {
+      alert('위치 서비스를 지원하지 않습니다.')
+      return
+    }
+
+    watchId =
+      navigator.geolocation.watchPosition(
+        position => {
+
+          travelLogs.push({
+            latitude:
+              position.coords.latitude,
+
+            longitude:
+              position.coords.longitude,
+
+            recordedAt:
+              new Date().toISOString()
+          })
+
+          localStorage.setItem(
+            'travelLogs',
+            JSON.stringify(travelLogs)
+          )
+
+          console.log(
+            '여행 위치 저장',
+            travelLogs[travelLogs.length - 1]
+          )
+
+        },
+        error => {
+          console.error(error)
+        },
+        {
+          enableHighAccuracy: true
+        }
+      )
+
+    alert('여행 기록 시작')
+  })
+
+document
+  .getElementById('stopTripButton')
+  .addEventListener('click', () => {
+
+    if (watchId) {
+      navigator.geolocation.clearWatch(
+        watchId
+      )
+    }
+
+    alert('여행 기록 종료')
+  })
+
+const emailInput =
+  document.getElementById('emailInput')
 const passwordInput = document.getElementById('passwordInput')
 const signupButton = document.getElementById('signupButton')
 const loginButton = document.getElementById('loginButton')
@@ -1364,11 +1535,14 @@ if (!emailInput.value || !passwordInput.value) {
   })
 
   if (error) {
-    alert(error.message)
-  } else {
-    alert('로그인 성공')
-    updateAuthStatus()
-  }
+  alert(error.message)
+} else {
+  alert('로그인 성공')
+
+  updateAuthStatus()
+
+  await loadPhotosFromSupabase()
+}
 })
 
 logoutButton.addEventListener('click', async () => {
@@ -1436,12 +1610,60 @@ photoInput.addEventListener('change', async (event) => {
 
   const files = event.target.files
 
-  for (const file of files) {
+  for (let file of files) {
 
     try {
 
-      const gps = await exifr.gps(file)
-      const exifData = await exifr.parse(file)
+      let convertedFile = file
+
+if (
+  file.name
+    .toLowerCase()
+    .endsWith('.heic')
+) {
+  try {
+    console.log('HEIC → JPG 변환 시작')
+
+    const jpegBlob =
+      await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.95
+      })
+
+    convertedFile = new File(
+      [jpegBlob],
+      file.name.replace(/\.heic$/i, '.jpg'),
+      {
+        type: 'image/jpeg'
+      }
+    )
+
+    console.log('HEIC → JPG 변환 완료')
+  } catch (error) {
+    console.log('HEIC 변환 실패', error)
+  }
+}
+
+      let gps = null
+
+try {
+  gps = await exifr.gps(convertedFile)
+} catch (error) {
+  console.log('사진 GPS 없음')
+}
+
+let exifData = {}
+
+try {
+  exifData = await exifr.parse(convertedFile)
+} catch (error) {
+  console.log('EXIF 읽기 실패', error)
+}
+console.log(
+  file.name,
+  exifData
+)
 const takenAt =
   exifData?.DateTimeOriginal || ''
 
@@ -1451,13 +1673,70 @@ const displayDate =
         .toLocaleDateString('ko-KR')
     : ''
 
+let latitude =
+  gps?.latitude
+
+let longitude =
+  gps?.longitude
+
+const photoTime =
+  exifData?.DateTimeOriginal
+    ? new Date(exifData.DateTimeOriginal)
+    : new Date()
+
+if ((!latitude || !longitude) && travelLogs.length > 0) {
+  const nearestLog =
+    travelLogs.reduce((closest, log) => {
+      const diff =
+        Math.abs(
+          new Date(log.recordedAt) -
+          photoTime
+        )
+
+      if (!closest || diff < closest.diff) {
+        return {
+          ...log,
+          diff
+        }
+      }
+
+      return closest
+    }, null)
+
+  const maxDiff =
+    1000 * 60 * 60 * 12
+
+  if (
+    nearestLog &&
+    nearestLog.diff <= maxDiff
+  ) {
+    latitude = nearestLog.latitude
+    longitude = nearestLog.longitude
+
+    console.log(
+      '여행 기록 위치 적용',
+      nearestLog
+    )
+  } else {
+    console.log(
+      '사진 시간과 위치 기록 시간이 너무 멀어서 적용 안 함',
+      nearestLog
+    )
+  }
+}
+
+if (!latitude || !longitude) {
+  alert(`${file.name} 사진의 위치 정보를 찾지 못했어요.`)
+  continue
+}
+
       console.log(file.name)
       console.log(gps)
 
 let address = { displayName: '' }
 
 try {
-  address = await getAddress(gps.latitude, gps.longitude)
+  address = await getAddress(latitude, longitude)
   console.log(address)
 } catch (error) {
   console.log('주소 변환 실패', error)
@@ -1466,30 +1745,37 @@ try {
 let landmarkName = ''
 
 try {
-  landmarkName = await getLandmark(gps.latitude, gps.longitude)
+  landmarkName = await getLandmark(latitude, longitude)
   console.log('랜드마크:', landmarkName)
 } catch (error) {
   console.log('랜드마크 검색 실패', error)
 }
 
 const imageUrl = URL.createObjectURL(file)
-const thumbnailUrl = await createThumbnailDataUrl(file)
+let thumbnailUrl = ''
+
+try {
+  thumbnailUrl =
+    await createThumbnailDataUrl(convertedFile)
+} catch (error) {
+  console.log('썸네일 생성 실패', error)
+}
 
 
 L.marker([
-  gps.latitude,
-  gps.longitude
+  latitude,
+  longitude
 ], { icon: photoIcon })
 .addTo(map)
 .bindPopup(`
   <div>
     <img src="${thumbnailUrl}" style="width:160px; border-radius:8px; margin-bottom:8px;"><br>
     <strong>${file.name}</strong><br>
-    ${address.displayName || `${gps.latitude}, ${gps.longitude}`}
+    ${address.displayName || `${latitude}, ${longitude}`}
   </div>
 `)
 
-map.setView([gps.latitude, gps.longitude], 13)
+map.setView([latitude, longitude], 13)
 
 const listItem = document.createElement('li')
 
@@ -1499,7 +1785,7 @@ listItem.innerHTML = `
     <div>
       <strong>${file.name}</strong><br>
 ${takenAt ? `${takenAt}<br>` : ''}
-${address.displayName || `${gps.latitude}, ${gps.longitude}`}
+${address.displayName || `${latitude}, ${longitude}`}
     </div>
   </div>
 `
@@ -1508,21 +1794,25 @@ photoList.appendChild(listItem)
 
 const alreadySaved = savedPhotos.some(photo =>
   photo.name === file.name &&
-  photo.latitude === gps.latitude &&
-  photo.longitude === gps.longitude
+  photo.latitude === latitude &&
+  photo.longitude === longitude
 )
 
 if (!alreadySaved) {
 savedPhotos.push({
   name: file.name,
-  latitude: gps.latitude,
-  longitude: gps.longitude,
+  latitude: latitude,
+  longitude: longitude,
   address: address.displayName,
   landmarkName,
   thumbnailUrl,
   takenAt,
   displayDate
 })
+
+await uploadPhotoToSupabase(
+  savedPhotos[savedPhotos.length - 1]
+)
 
   localStorage.setItem(
     'visitedPhotos',
@@ -1544,7 +1834,161 @@ console.log(error)
 
 })
 
+async function uploadPhotoToSupabase(photo) {
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  const { data: existingPhoto } =
+  await supabase
+    .from('trip_photos')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('latitude', photo.latitude)
+    .eq('longitude', photo.longitude)
+    .maybeSingle()
+
+    if (existingPhoto) {
+
+  console.log(
+    '이미 저장된 사진'
+  )
+
+  return
+}
+
+  if (!user) {
+    console.log('로그인 안 됨: Supabase 저장 생략')
+    return
+  }
+
+  const fileName =
+    `${user.id}/${Date.now()}-${photo.name}`
+
+  const fileBlob =
+    await fetch(photo.thumbnailUrl)
+      .then(response => response.blob())
+
+  const { error: uploadError } =
+    await supabase.storage
+      .from('photos')
+      .upload(fileName, fileBlob)
+
+  if (uploadError) {
+    console.log('Storage 업로드 실패', uploadError)
+    return
+  }
+
+  const { data } =
+    supabase.storage
+      .from('photos')
+      .getPublicUrl(fileName)
+
+  const { error: insertError } =
+    await supabase
+      .from('trip_photos')
+      .insert({
+        user_id: user.id,
+        file_url: data.publicUrl,
+        thumbnail_url: data.publicUrl,
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+        address: photo.address,
+        landmark_name: photo.landmarkName,
+        taken_at: photo.takenAt || null
+      })
+
+  if (insertError) {
+    console.log('DB 저장 실패', insertError)
+    return
+  }
+
+  console.log('Supabase 저장 완료')
+}
+
 console.log(
   'supabase',
   supabase
 )
+
+async function loadPhotosFromSupabase() {
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return
+  }
+
+  const { data, error } =
+    await supabase
+      .from('trip_photos')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', {
+        ascending: false
+      })
+
+  if (error) {
+    console.log(error)
+    return
+  }
+
+  console.log(
+    '불러온 사진',
+    data.length
+  )
+
+savedPhotos.length = 0
+
+data.forEach(photo => {
+
+  savedPhotos.push({
+    supabaseId: photo.id,
+    
+    name:
+      photo.file_url
+        ?.split('/')
+        .pop() || '',
+
+    latitude:
+      photo.latitude,
+
+    longitude:
+      photo.longitude,
+
+    address:
+      photo.address,
+
+    landmarkName:
+      photo.landmark_name,
+
+    thumbnailUrl:
+      photo.thumbnail_url,
+
+    fullImageUrl:
+      photo.file_url,
+
+    takenAt:
+      photo.taken_at,
+
+    displayDate:
+      photo.taken_at
+        ? new Date(photo.taken_at)
+            .toLocaleDateString('ko-KR')
+        : ''
+  })
+
+})
+
+localStorage.setItem(
+  'visitedPhotos',
+  JSON.stringify(savedPhotos)
+)
+
+updateStats()
+updateAlbums()
+updateTrips()
+
+}

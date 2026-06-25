@@ -364,3 +364,27 @@ body {
   width: 100% !important;
   height: 420px !important;
 }
+
+.upload-guide {
+  margin-top: 8px;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.album-photo-item {
+  display: inline-block;
+  text-align: center;
+  margin: 8px;
+}
+
+.album-photo-item img {
+  display: block;
+  width: 180px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.delete-photo-button {
+  cursor: pointer;
+}
